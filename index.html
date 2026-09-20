@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-font="system">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3d9be9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="工作台">
+<title>故似的工作台</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<!-- 开屏 -->
+<div id="splash">
+  <div class="splash-flower" id="sp-flower">🌸</div>
+  <div class="splash-date" id="sp-date"></div>
+  <div class="splash-hi"><span id="sp-name">嗨，故似</span><small>D A I L Y · 好好生活</small></div>
+  <div class="splash-word" id="sp-word"></div>
+  <button id="splash-btn">进入工作台</button>
+  <div class="splash-tip">数据保存在本机 · 可添加到桌面当 App 用</div>
+</div>
+
+<!-- 左侧窄栏 -->
+<nav id="side"></nav>
+
+<!-- 主区 -->
+<div id="main">
+  <header class="topbar">
+    <div class="tb-left">
+      <div class="tb-name" id="tb-name">故似</div>
+      <div class="tb-date" id="tb-date"></div>
+    </div>
+    <div class="tb-right">
+      <button class="btn-checkin" id="btn-day" data-act="day">今日打卡</button>
+      <button class="btn-gear" data-act="openSheet" aria-label="设置">⚙</button>
+    </div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<!-- 设置抽屉 -->
+<div id="sheet-mask" data-act="closesheet"></div>
+<aside id="sheet"></aside>
+
+<!-- 输入弹窗 -->
+<div id="modal-mask"><div id="modal"></div></div>
+
+<div id="toast"></div>
+
+<input type="file" id="file" accept="image/*" capture="environment" multiple hidden>
+<input type="file" id="imp" accept=".json,application/json" hidden>
+
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

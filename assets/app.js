@@ -130,13 +130,28 @@
     if (!S.todo.history) S.todo.history = {};
     if (!S.checkins || typeof S.checkins !== 'object') S.checkins = {};
     if (!S.diet || typeof S.diet !== 'object') S.diet = { mealLog: {} };
+    // 账目里一条脏数据（比如备份文件里缺 date）会让整个首页渲染崩掉，这里先修好
+    if (!Array.isArray(S.finance)) S.finance = [];
+    S.finance = S.finance.filter(f => {
+      if (!f || typeof f !== 'object') return false;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date || '')) f.date = wbToday();
+      if (f.type !== 'in' && f.type !== 'out') f.type = 'out';
+      f.amount = Number(f.amount) || 0;
+      return true;
+    });
   }
-  let saveWarned = false;
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); }
-    catch (e) {
-      if (!saveWarned) { saveWarned = true; toast('存储空间不足，请在设置里导出备份后清理照片'); }
+    try { localStorage.setItem(KEY, JSON.stringify(S)); return; }
+    catch (e) { /* 多半是照片把 localStorage 撑爆了，下面逐级瘦身重试 */ }
+    for (const keep of [80, 40, 0]) {
+      S.photos = (S.photos || []).slice(-keep);
+      try {
+        localStorage.setItem(KEY, JSON.stringify(S));
+        toast(keep ? '存储空间不足，已自动清理部分老照片' : '存储空间不足，照片已全部清理，请到设置里导出备份');
+        return;
+      } catch (e2) {}
     }
+    toast('存储空间不足，本次修改没能保存，请到设置里导出备份后清理数据');
   }
 
   /* ============ 日期翻转：次日 7:00 把「明日计划」并进今日 ============ */
@@ -166,7 +181,7 @@
   const activeModules = () => S.sidebar.filter(m => m.on && m.id !== 'home' && m.id !== 'summary');
   const ci = ds => (S.checkins[ds] = S.checkins[ds] || {});
   function allDone(ds) {
-    const ms = S.sidebar.filter(m => m.on && m.id !== 'home' && m.id !== 'summary' && m.id !== 'custom');
+    const ms = S.sidebar.filter(m => m.on && m.id !== 'home' && m.id !== 'summary' && !m.custom);
     if (!ms.length) return false;
     const c = S.checkins[ds] || {};
     return ms.every(m => c[m.id]);
@@ -187,7 +202,7 @@
     const rows = S.finance.filter(f => ym(f.date) === m);
     const inn = rows.filter(r => r.type === 'in').reduce((a, b) => a + b.amount, 0);
     const out = rows.filter(r => r.type === 'out').reduce((a, b) => a + b.amount, 0);
-    let days = 0; const last = new Date().getDate();
+    let days = 0; const last = +TODAY.slice(8, 10);
     for (let i = 1; i <= (ym(TODAY) === m ? last : 31); i++) {
       const ds = m + '-' + pad(i);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) continue;
@@ -394,7 +409,10 @@
       let months = (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth());
       if (n.getDate() < b.getDate()) months--;
       if (months < 0) months = 0;
-      const stage = D.MENU_BABY.find(s => { const a = parseInt(s.stage, 10); return months >= a && months < a + 3; }) || D.MENU_BABY[D.MENU_BABY.length - 1];
+      // 取 min（起始月龄）不超过当前月龄的最后一段。别再从「1-2 岁」这种标题里 parseInt：
+      // 那会把「1-2 岁」读成 1 个月，3 个月的宝宝就吃上了 1-2 岁的饭。
+      let stage = D.MENU_BABY[0];
+      for (const s of D.MENU_BABY) { if (months >= (s.min || 0)) stage = s; else break; }
       h += '<div class="row between" style="margin-bottom:10px"><div><div class="sub">已陪伴</div>' +
         '<div style="font-size:24px;font-weight:700;color:var(--brand)">' + days + ' <span style="font-size:13px">天</span></div></div>' +
         '<div style="text-align:right"><div class="sub">月龄</div><div style="font-size:18px;font-weight:700">' + months + ' 个月</div>' +
@@ -403,7 +421,7 @@
       stage.meals.forEach(m => {
         const tip = D.ING_TIPS[m.key] || D.genericTip;
         h += '<div class="meal" style="margin-top:10px"><div class="meal-h"><div class="meal-t">' + m.type + ' · ' + esc(m.name) + '</div>' +
-          '<span class="meal-k">约 ' + m.kcal + ' kcal</span></div>' +
+          (m.kcal ? '<span class="meal-k">约 ' + m.kcal + ' kcal</span>' : '') + '</div>' +
           '<div class="sub" style="margin-top:6px"><b>食材：</b>' + m.ing.map(esc).join('、') + '</div>' +
           '<div class="sub" style="margin-top:4px"><b>做法：</b></div><ul>' + m.steps.map(s => '<li>' + esc(s) + '</li>').join('') + '</ul>' +
           '<div class="tipbox good"><b>🌟 为什么适合</b>' + tip.good.join('；') + '。</div>' +
@@ -744,7 +762,7 @@
       S.photos.push({ id: uid(), date: TODAY, tag: shotTag, note: '', data: data });
     }
     if (S.photos.length > 400) S.photos.splice(0, S.photos.length - 400);
-    ci(TODAY)[shotTag === '饮食' ? 'sport' : 'photo'] = true;
+    ci(TODAY)[shotTag === '饮食' ? 'diet' : 'photo'] = true;
     autoDay(); save(); render();
     toast('已保存 ' + files.length + ' 张');
   }
@@ -873,12 +891,15 @@
         const p = D.PLATFORMS[id] || D.PLATFORMS['哔哩哔哩'];
         const kw = t.dataset.kw || '';
         const web = p.web + encodeURIComponent(kw);
-        const now = Date.now();
-        const timer = setTimeout(() => { if (Date.now() - now < 2200) window.open(web, '_blank'); }, 1400);
-        document.addEventListener('visibilitychange', function h() {
-          if (document.hidden) { clearTimeout(timer); document.removeEventListener('visibilitychange', h); }
-        });
-        try { location.href = p.scheme + (p.scheme.indexOf('keep') > -1 ? 'search?keyword=' + encodeURIComponent(kw) : ''); } catch (err) { clearTimeout(timer); window.open(web, '_blank'); }
+        // 没装 App 时，setTimeout 里 window.open 会被拦掉，只剩一句报错——这里直接跳网页版
+        const timer = setTimeout(() => {
+          document.removeEventListener('visibilitychange', h);
+          location.href = web;
+        }, 1400);
+        function h() { if (document.hidden) { clearTimeout(timer); document.removeEventListener('visibilitychange', h); } }
+        document.addEventListener('visibilitychange', h);
+        try { location.href = p.scheme + (p.scheme.indexOf('keep') > -1 ? 'search?keyword=' + encodeURIComponent(kw) : ''); }
+        catch (err) { clearTimeout(timer); location.href = web; }
         break;
       }
       case 'ftype': finType = id; syncFinType(); break;
@@ -996,10 +1017,16 @@
       const f = e.target.files[0]; e.target.value = '';
       if (!f) return;
       const fr = new FileReader();
-      fr.onload = () => {
+      fr.onload = async () => {
         try {
           const d = JSON.parse(fr.result);
-          if (!d || typeof d !== 'object') throw 0;
+          if (!d || typeof d !== 'object' || Array.isArray(d)) throw 0;
+          if (!d.checkins || !d.sidebar) throw 0;
+          const ok = await modal('确认导入？', {
+            html: '<div class="sub">会用这个备份覆盖手机上的全部现有数据，不能撤销。建议先导出一份当前的。</div>',
+            ok: '覆盖导入'
+          });
+          if (!ok) { toast('已取消'); return; }
           S = d; normalize(); save(); applyTheme(); closeSheet(); go('home'); toast('导入成功');
         } catch (err) { toast('文件格式不对'); }
       };
@@ -1028,10 +1055,13 @@
   function boot() {
     load(); applyTheme(); rollDay();
     page = 'home';
-    render(); splash(); bindFiles();
+    splash(); bindFiles();
+    try { render(); } catch (e) { toast('界面渲染出错，数据没丢，请到设置里导出备份'); }
     setInterval(() => { if (rollDay()) { render(); toast('新的一天，明日计划已转为今日待办'); } }, 30000);
     window.addEventListener('focus', () => { if (rollDay()) render(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden && rollDay()) render(); });
+    // 同一个 App 可能同时开着（浏览器标签 + 桌面图标），两边互相覆盖会丢数据
+    window.addEventListener('storage', e => { if (e.key === KEY) { load(); try { render(); } catch (err) {} } });
     if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
